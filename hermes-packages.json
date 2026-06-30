@@ -71,11 +71,21 @@
       "libreoffice",
       "pandoc",
       "poppler-utils"
+    ],
+    "tailscale_optional": [
+      "tailscale",
+      "tailscale-archive-keyring"
+    ],
+    "dashboard_tls_proxy_optional": [
+      "nginx"
     ]
   },
   "checks": {
     "user_commands": [
       "hermes",
+      "hermes-dashboard-run",
+      "hermes-gateway-restart",
+      "hermes-self-update",
       "node",
       "npm",
       "npx",

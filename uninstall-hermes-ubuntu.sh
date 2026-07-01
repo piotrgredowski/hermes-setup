@@ -26,6 +26,7 @@ HERMES_PURGE_ALL_LISTED_PACKAGES="${HERMES_PURGE_ALL_LISTED_PACKAGES:-0}"
 HERMES_REMOVE_USER="${HERMES_REMOVE_USER:-1}"
 HERMES_REMOVE_HOME="${HERMES_REMOVE_HOME:-1}"
 HERMES_KILL_USER_PROCESSES="${HERMES_KILL_USER_PROCESSES:-1}"
+HERMES_STARTUP_CONTEXT_FILE="${HERMES_STARTUP_CONTEXT_FILE:-$HERMES_DATA_DIR/SOUL.md}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P || pwd)"
 DEFAULT_PACKAGE_JSON="$SCRIPT_DIR/hermes-packages.json"
@@ -166,6 +167,25 @@ remove_user_helpers() {
     "$helper_dir/uvx"
 }
 
+remove_hermes_startup_context_block() {
+  local file="$HERMES_STARTUP_CONTEXT_FILE"
+  local begin_marker="<!-- >>> hermes-setup host-operations >>> -->"
+  local end_marker="<!-- <<< hermes-setup host-operations <<< -->"
+  local tmp
+
+  [[ -f "$file" ]] || return 0
+
+  log "Removing Hermes startup context block"
+  tmp="$(mktemp)"
+  awk -v begin="$begin_marker" -v end="$end_marker" '
+    $0 == begin { skip = 1; next }
+    $0 == end { skip = 0; next }
+    !skip { print }
+  ' "$file" >"$tmp"
+  install -m 0644 -o "$HERMES_USER" -g "$HERMES_GROUP" "$tmp" "$file"
+  rm -f "$tmp"
+}
+
 remove_tailscale_if_installed_by_us() {
   [[ "$HERMES_REMOVE_TAILSCALE" == "1" ]] || return 0
   [[ -f "$HERMES_TAILSCALE_INSTALLED_BY_US_FILE" ]] || return 0
@@ -299,6 +319,7 @@ main() {
   kill_user_processes
   remove_sudoers_rule
   remove_user_helpers
+  remove_hermes_startup_context_block
   remove_dashboard_tls_proxy_config
   remove_tailscale_if_installed_by_us
   remove_user_and_home

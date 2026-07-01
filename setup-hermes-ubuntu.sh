@@ -51,6 +51,8 @@ HERMES_MODEL_PROVIDER="${HERMES_MODEL_PROVIDER:-}"
 HERMES_MODEL_DEFAULT="${HERMES_MODEL_DEFAULT:-}"
 HERMES_MODEL_API_MODE="${HERMES_MODEL_API_MODE:-}"
 HERMES_MODEL_BASE_URL="${HERMES_MODEL_BASE_URL:-}"
+HERMES_STARTUP_CONTEXT_ENABLE="${HERMES_STARTUP_CONTEXT_ENABLE:-1}"
+HERMES_STARTUP_CONTEXT_FILE="${HERMES_STARTUP_CONTEXT_FILE:-$HERMES_DATA_DIR/SOUL.md}"
 HERMES_HOME_MODE="${HERMES_HOME_MODE:-750}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P || pwd)"
@@ -596,6 +598,29 @@ update_managed_shell_block() {
   rm -f "$tmp"
 }
 
+update_managed_markdown_block() {
+  local file="$1"
+  local begin_marker="$2"
+  local end_marker="$3"
+  local block="$4"
+  local mode="${5:-0644}"
+  local tmp
+
+  install -d -m 700 -o "$HERMES_USER" -g "$HERMES_GROUP" "$(dirname "$file")"
+  touch "$file"
+  chown "$HERMES_USER:$HERMES_GROUP" "$file"
+
+  tmp="$(mktemp)"
+  awk -v begin="$begin_marker" -v end="$end_marker" '
+    $0 == begin { skip = 1; next }
+    $0 == end { skip = 0; next }
+    !skip { print }
+  ' "$file" >"$tmp"
+  printf '\n%s\n' "$block" >>"$tmp"
+  install -m "$mode" -o "$HERMES_USER" -g "$HERMES_GROUP" "$tmp" "$file"
+  rm -f "$tmp"
+}
+
 configure_authorized_keys() {
   if [[ -z "${HERMES_AUTHORIZED_KEYS:-}" && -z "${HERMES_AUTHORIZED_KEYS_FILE:-}" ]]; then
     return
@@ -816,6 +841,45 @@ EOF
     "$helper_dir/hermes-gateway-restart" \
     "$helper_dir/hermes-self-update" \
     "$helper_dir/hermes-dashboard-run"
+}
+
+install_hermes_startup_context() {
+  [[ "$HERMES_STARTUP_CONTEXT_ENABLE" == "1" ]] || return 0
+
+  local begin_marker="<!-- >>> hermes-setup host-operations >>> -->"
+  local end_marker="<!-- <<< hermes-setup host-operations <<< -->"
+  local block
+
+  block="$(cat <<EOF
+$begin_marker
+## Host Operations
+
+This Hermes instance runs as the unprivileged Linux user \`$HERMES_USER\`.
+It must not use \`sudo\` or attempt to gain root access.
+
+When asked to update itself, run:
+
+\`\`\`bash
+hermes-self-update
+\`\`\`
+
+When asked to restart its own gateway process, run:
+
+\`\`\`bash
+hermes-gateway-restart
+\`\`\`
+
+\`hermes-self-update\` runs \`hermes update\` and then requests a gateway
+restart. \`hermes-gateway-restart\` signals the running gateway process owned
+by \`$HERMES_USER\`; systemd supervision brings the service back if needed.
+These helper commands are intentionally available without granting \`sudo\` or
+direct systemd management.
+$end_marker
+EOF
+)"
+
+  log "Installing Hermes startup context in $HERMES_STARTUP_CONTEXT_FILE"
+  update_managed_markdown_block "$HERMES_STARTUP_CONTEXT_FILE" "$begin_marker" "$end_marker" "$block" 0644
 }
 
 dotenv_quote() {
@@ -1555,6 +1619,7 @@ main() {
   install_hermes_agent
   ensure_user_tool_shims
   install_user_operation_helpers
+  install_hermes_startup_context
   install_playwright_system_deps_via_upstream
   configure_env_file
   configure_model_settings

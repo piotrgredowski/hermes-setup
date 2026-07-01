@@ -10,6 +10,8 @@ Setup:
 - installs apt packages from `hermes-packages.json`
 - installs Hermes Agent under `/home/hermes/.hermes`
 - configures Telegram through `/home/hermes/.hermes/.env`
+- installs a managed startup-context block in `/home/hermes/.hermes/SOUL.md`
+  so Hermes knows how to update and restart itself without sudo
 - installs the gateway as the `hermes-gateway.service` systemd service, while
   the process itself runs as `User=hermes`
 - optionally installs a Tailscale-reachable dashboard as
@@ -139,6 +141,12 @@ services again.
   configuration written to `/home/hermes/.hermes/config.yaml`. The model name
   must be supported by the selected provider; for example, `opencode-go`
   rejects unsupported model names with `HTTP 401: Model ... is not supported`.
+- `HERMES_STARTUP_CONTEXT_ENABLE=1` - writes a managed block to
+  `/home/hermes/.hermes/SOUL.md` that tells Hermes to use
+  `hermes-self-update` for self-updates and `hermes-gateway-restart` for
+  self-restarts. Existing custom `SOUL.md` content is preserved.
+- `HERMES_STARTUP_CONTEXT_FILE=/home/hermes/.hermes/SOUL.md` - override the
+  startup context file path
 - `HERMES_DASHBOARD_ENABLE=1` - installs and starts the dashboard service
 - `HERMES_DASHBOARD_HOST=tailscale` - binds the dashboard to the host's raw
   Tailscale IPv4 address. You can also set a literal IP or hostname.
@@ -230,6 +238,10 @@ process to restart. `hermes-gateway-restart` sends a restart signal to the
 gateway process owned by `hermes`; systemd brings the service back up because
 the service itself is configured with restart supervision. The `hermes` user is
 not granted `sudo` or permission to manage systemd directly.
+
+Setup also writes this operational knowledge into the Hermes startup context
+file, `/home/hermes/.hermes/SOUL.md`, using a managed block. That lets Hermes
+know which commands to call when you ask it to update or restart itself.
 
 ## Uninstall
 
